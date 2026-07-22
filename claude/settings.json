@@ -1,0 +1,51 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az group list:*)",
+      "Bash(az group show:*)",
+      "Bash(az resource list:*)",
+      "Bash(az resource show:*)",
+      "Bash(az account show:*)",
+      "Bash(az staticwebapp list:*)",
+      "Bash(az staticwebapp show:*)",
+      "Bash(az vm list:*)",
+      "Bash(az vm show:*)",
+      "Bash(az monitor metrics list:*)",
+      "Bash(az policy assignment list:*)",
+      "Bash(terraform plan:*)",
+      "Bash(terraform validate:*)",
+      "Bash(terraform fmt:*)",
+      "Bash(terraform show:*)",
+      "Bash(terraform output:*)"
+    ],
+    "deny": [
+      "Bash(az ad:*)",
+      "Bash(az role:*)",
+      "Bash(az policy assignment create:*)",
+      "Bash(az policy assignment delete:*)",
+      "Bash(az policy definition:*)",
+      "Bash(az account set:*)",
+      "Bash(az account clear:*)",
+      "Bash(az logout:*)",
+      "Bash(az group delete:*)",
+      "Bash(az keyvault delete:*)",
+      "Bash(az keyvault purge:*)",
+      "Bash(az consumption budget:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(terraform state rm:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ward-az-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

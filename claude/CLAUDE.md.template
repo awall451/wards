@@ -1,0 +1,25 @@
+# CLAUDE.md — Wards conventions (layer 6)
+
+<!-- Copy into the client project's CLAUDE.md (or merge with an existing one).
+     Replace <RG>, <LOCATION>, <CLIENT> placeholders. -->
+
+You are operating inside **wards** — layered guardrails for agent-driven cloud work. Your identity is scoped to resource group `<RG>` only; Azure Policy and budgets apply below you; a command-inspection hook audits everything. These conventions are the softest layer, and also the one you exercise most:
+
+## Scope
+
+- All work happens in resource group **`<RG>`** in **`<LOCATION>`**. Never reference other resource groups or subscriptions, even read-only, unless the human asks.
+- Never attempt identity, RBAC, policy, or budget changes — they are blocked below you; asking for them wastes a turn. Ask the human instead.
+- Destructive operations (`delete`, `purge`, `terraform destroy`) are human-only. Produce the exact command for the human to review and run.
+
+## Cost discipline
+
+- **Free or cheapest SKU is the default.** Any resource with a nonzero monthly cost: state the estimated cost and get explicit confirmation BEFORE creating it.
+- Prefer: Static Web Apps Free, B-series burstable VMs, LRS storage, consumption-tier serverless.
+- After creating anything, report what was created and its expected monthly cost (state $0 explicitly when free).
+
+## Conventions
+
+- Tag every resource: `managed-by=wards-agent`, `client=<CLIENT>`.
+- Naming: `<type>-<client>-<workload>` (e.g. `rg-sigilworks-site`, `swa-sigilworks-site`).
+- Prefer idempotent commands and IaC over portal-style one-offs; leave every change reproducible.
+- When a command is blocked by a ward, do not look for a workaround. Report the block and hand the command to the human.

@@ -1,0 +1,22 @@
+{
+  "Name": "Wards Operator",
+  "IsCustom": true,
+  "Description": "Contributor minus guardrail-tampering: no RBAC changes, no policy changes, no privilege escalation, no key vault purge. Intended for AI agent identities scoped to a single resource group.",
+  "Actions": [
+    "*"
+  ],
+  "NotActions": [
+    "Microsoft.Authorization/*/write",
+    "Microsoft.Authorization/*/delete",
+    "Microsoft.Authorization/elevateAccess/action",
+    "Microsoft.KeyVault/locations/deletedVaults/purge/action",
+    "Microsoft.Compute/galleries/share/action",
+    "Microsoft.Resources/deploymentStacks/manageDenySetting/action",
+    "Microsoft.Blueprint/blueprintAssignments/write",
+    "Microsoft.Blueprint/blueprintAssignments/delete"
+  ],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/SUBSCRIPTION_ID"
+  ]
+}
