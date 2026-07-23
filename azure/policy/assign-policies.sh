@@ -42,4 +42,5 @@ az policy assignment create --name "wards-denied-types" --scope "$SCOPE" \
   --params "{\"listOfResourceTypesNotAllowed\":{\"value\":$DENIED_TYPES}}" --output none
 echo "✔ denied resource types"
 
-echo "Policies assigned to $RG. Test: try creating a resource in a disallowed region — expect a policy denial."
+echo "All policies assigned to $RG successfully."
+echo "(To verify later: creating a resource in a disallowed region should return RequestDisallowedByPolicy.)"

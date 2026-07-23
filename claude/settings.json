@@ -1,4 +1,7 @@
 {
+  "env": {
+    "AZURE_CONFIG_DIR": "/home/AGENT_USER/.wards/az-agent"
+  },
   "permissions": {
     "allow": [
       "Bash(az group list:*)",

@@ -21,6 +21,17 @@ fi
 AUDIT_LOG="${WARDS_AUDIT_LOG:-$HOME/.wards/audit.log}"
 mkdir -p "$(dirname "$AUDIT_LOG")"
 
+# --- Profile assertion: az must run against the agent's isolated profile, ---
+# --- never the default ~/.azure (which may hold a human's login).         ---
+# The harness sets AZURE_CONFIG_DIR via settings.json "env"; if it's missing,
+# this session is misconfigured — block az entirely rather than risk running
+# as the wrong identity.
+if grep -qE '(^|[|;&[:space:]])az[[:space:]]' <<<"$cmd" && [ -z "${AZURE_CONFIG_DIR:-}" ]; then
+  printf '%s\t%s\t%s\n' "$(date -Is)" "BLOCKED: AZURE_CONFIG_DIR unset" "$cmd" >> "$AUDIT_LOG"
+  echo "WARD BLOCK: AZURE_CONFIG_DIR is not set — az would use the default profile (possibly a human identity). Fix settings.json env block; do not work around." >&2
+  exit 2
+fi
+
 log() { printf '%s\t%s\t%s\n' "$(date -Is)" "$1" "$cmd" >> "$AUDIT_LOG"; }
 
 deny() {
