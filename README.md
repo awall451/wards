@@ -51,8 +51,24 @@ wards/
 ## Quickstart (new engagement)
 
 1. **Human:** run `azure/rbac/create-agent-identity.sh <rg-name> <location>` — creates the resource group, the Wards Operator role, and a service principal scoped to that RG only.
-2. **Human:** run `azure/policy/assign-policies.sh <rg-name>` and `azure/budgets/create-budget.sh <rg-name> <amount>`.
+2. **Human:** run `azure/policy/assign-policies.sh <rg-name>` and `azure/budgets/create-budget.sh <rg-name> <amount> <alert-email>`. Budgets apply to pay-as-you-go subscriptions; on a free-credit account the spending limit is the stronger guard until upgrade.
 3. Copy `claude/` contents into the project's `.claude/` directory (or `cursor/wards-rules.md` into `.cursor/rules/`).
 4. Hand the agent the scoped credentials. It now operates inside the wards; the audit log lands in `~/.wards/audit.log`.
 
 Everything above uses free Azure features — RBAC, Policy, and budgets cost $0.
+
+## Working on this repo
+
+```bash
+pre-commit install
+```
+
+`.pre-commit-config.yaml` runs gitleaks, a private-key detector, ShellCheck, and basic hygiene checks on every commit.
+
+This is the one failure the six layers cannot undo. Layers 1–3 are enforced by Azure and hold even against a rogue agent, but nothing in them prevents a credential being committed to a public repository — and published history has to be assumed cloned before it can be scrubbed. A pre-commit scan is the only place that failure is cheap to stop.
+
+Scan everything, including before any first public push:
+
+```bash
+pre-commit run --all-files
+```
