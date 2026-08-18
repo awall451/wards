@@ -23,3 +23,19 @@ You are operating inside **wards** — layered guardrails for agent-driven cloud
 - Naming: `<type>-<client>-<workload>` (e.g. `rg-sigilworks-site`, `swa-sigilworks-site`).
 - Prefer idempotent commands and IaC over portal-style one-offs; leave every change reproducible.
 - When a command is blocked by a ward, do not look for a workaround. Report the block and hand the command to the human.
+
+## Code quality — how the hooks judge your edits
+
+Hooks measure every file you edit and ratchet against its state when you **first touched it this session**. New or worsened problems block; pre-existing ones warn once. Internalize the rules so the hooks rarely fire:
+
+**Code shape** (per function): CCN ≤ 10 target, ≤ 20 acceptable when the logic warrants it, > 20 blocked for new/worsened code, 51+ never. Function ≤ 50 lines target / ≤ 100 max; ≤ 4 params target / ≤ 6 max; file ≤ 400 lines target / ≤ 800 max. Fix the shape — extract helpers, early-return, table-drive branches, split by responsibility — never by making a helper that is itself over the line.
+
+**Lint & format**: the project's own linter runs on every edit; new findings block. The formatter runs too — if you are told the file was reformatted, re-read before editing again. **Never add a suppression** (`# noqa`, `# type: ignore`, `eslint-disable`, `@ts-ignore`, `#nosec`, `//nolint` …) — fix the finding; if a suppression is genuinely right, stop and tell the human.
+
+**Git**: no `--no-verify`, no force-push, no `reset --hard` / `clean -f` / `checkout -- .` / `stash drop` / `branch -D`, no global config, no history rewrites — human-only; hand them the command. Commit messages are Conventional Commits: `type(scope)?: subject`, subject ≤ 72 chars, types feat/fix/docs/style/refactor/perf/test/build/ci/chore/revert.
+
+**Tests**: you are not done until the test suite runs green; the Stop hook runs it. Never delete or skip a test to go green — restore it, or stop and tell the human why it should go. **Types**: no new type errors; the Stop hook checks.
+
+**Legacy code you didn't write**: if a function was already high-risk, a file already had lint findings or type errors, before you touched it — you are *not* expected to clean it up unasked. But: add **nothing** to the problem (new logic goes in a new helper), and **tell the human** it exists and a refactor is recommended before more work lands there.
+
+**When a ward blocks, do not look for a workaround** (disabling the hook, editing `.claude/settings.json`, `.claude/hooks/` or `.wards/` — those are blocked and audited — or splitting into an equally bad helper). Fix the shape of the work, or stop and explain to the human. `.wards/config.toml` and `.wards/complexity-allow.txt` are the human's; their diff is how the human sees you asked.

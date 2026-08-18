@@ -39,6 +39,11 @@ The audit log is a deliverable: after an engagement, the client can read exactly
 - File: `claude/hooks/ward-az-guard.sh`
 - Failure mode covered: forbidden commands smuggled past prefix matching (pipes, `&&` chains, flags reordered) — the hook sees the full command string. Also: the audit trail itself.
 
+The same layer carries six more hooks aimed at the repo rather than the cloud account — the agent's *output* is warded too. `ward-git-guard.py` (PreToolUse Bash) blocks hook bypass, history rewrites, whole-tree discards and enforces Conventional Commits. `ward-complexity.py` and `ward-lint.py` (Pre/PostToolUse on file edits + Stop) ratchet code shape (`lizard`) and the project's own linter/formatter, and block new suppression comments. `ward-tests.py` and `ward-typecheck.py` (Stop) refuse "done" while tests are red, deleted or skipped, or new type errors exist. `ward-tamper-guard.py` keeps the agent out of `.claude/settings*.json`, `.claude/hooks/` and `.wards/` — enforcement the agent can edit is not enforcement. All ratchet against the state at the agent's first touch this session — legacy problems warn once, new or worsened ones block. See [`code-quality.md`](code-quality.md).
+
+- Files: `claude/hooks/ward-git-guard.py`, `ward-complexity.py`, `ward-lint.py`, `ward-tests.py`, `ward-typecheck.py`, `ward-tamper-guard.py`, `wardlib.py`, `wardtools.py`
+- Failure mode covered: correct-but-badly-shaped code accumulating silently, and the specific ways agents cheat to go green — silence the linter, delete the test, `--no-verify`.
+
 ## Layer 6 — Agent conventions
 
 CLAUDE.md / Cursor rules: scope statement, cost discipline (free SKUs default, confirm-before-billable), tagging and naming standards, "when warded, don't work around — report." No enforcement, but it shapes nearly all routine behavior, and it's what makes the agent pleasant to supervise.

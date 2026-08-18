@@ -1,0 +1,15 @@
+# Wards' own ward config — the code-quality hooks read this (see docs/code-quality.md).
+# Human-owned. Agents: do not edit; ask.
+
+[tests]
+command = "bash tests/run.sh"
+timeout = 300
+
+[lint]
+format = true
+
+[tamper]
+# This repo IS the wards' source: hooks are developed and tested here, so the agent
+# may edit hook sources, tests and this file. In a client project leave [tamper] out
+# (default enabled = true) — the agent must not touch its own wards there.
+enabled = false

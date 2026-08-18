@@ -32,3 +32,27 @@ repos:
     rev: v0.10.0
     hooks:
       - id: shellcheck
+        args: [-x]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Eat our own cooking: the same limits the hooks enforce, and the hook test suites.
+  - repo: local
+    hooks:
+      - id: lizard-complexity
+        name: lizard (CCN <= 20)
+        entry: lizard -C 20 --warnings_only
+        language: system
+        types_or: [python, shell]
+        pass_filenames: true
+      - id: hook-tests
+        name: hook test suites (tests/run.sh)
+        entry: bash tests/run.sh
+        language: system
+        pass_filenames: false
+        files: ^(claude/hooks/|tests/)

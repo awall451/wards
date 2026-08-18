@@ -1,0 +1,13 @@
+# Wards repo lint config (layer 5 dogfood: ward-lint runs this on every edit).
+line-length = 110
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "C90", "SIM", "PL"]
+ignore = ["PLR0913", "PLR2004", "PLW1510"]  # arg counts / magic numbers judged by ward-complexity; subprocess check= noise
+
+[lint.mccabe]
+max-complexity = 15
+
+[lint.per-file-ignores]
+"claude/hooks/*.py" = ["E402"]  # sys.path.insert before `from wardlib import` — hooks are standalone scripts

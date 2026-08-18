@@ -1,0 +1,2 @@
+# Test payloads must contain literal $(…) / $VAR inside single quotes (they are hook inputs, not shell to expand).
+disable=SC2016
