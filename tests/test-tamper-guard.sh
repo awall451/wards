@@ -74,6 +74,8 @@ okb "cat .git/config"
 okb "python3 -c 'print(1)' > out.txt"                        # unrelated write
 okb "wc -l .wards/config.toml .claude/hooks/*.py"
 okb "sudo cat .claude/settings.json"
+okb "git config --get core.hooksPath"
+nob "git config --local core.hooksPath /dev/null"
 okb "git add .claude/hooks/ward-lint.py .wards/config.toml"       # staging a human's change is not a write
 okb "git add -A -- .claude/hooks"
 okb "git commit -m 'chore: update hooks' -- .claude/settings.json"

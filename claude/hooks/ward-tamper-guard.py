@@ -123,7 +123,9 @@ GIT_READ = {
     "remote",
     "describe",
 }
-DANGEROUS_ANYWHERE = re.compile(r"\bpre-commit\s+uninstall\b|\bcore\.hooksPath\b|\bhooksPath\b")
+DANGEROUS_ANYWHERE = re.compile(
+    r"\bpre-commit\s+uninstall\b|core\.hooksPath\s*=|config\b(?:\s+--?\w+)*\s+core\.hooksPath\s+\S", re.I
+)
 SEPARATORS = {";", "&", "&&", "|", "||", ";;", "|&"}
 HEREDOC_RE = re.compile(
     r"(?P<open><<-?\s*['\"]?(?P<tag>\w+)['\"]?[^\n]*\n)(?P<body>.*?)\n\s*(?P=tag)\s*$", re.S | re.M

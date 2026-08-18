@@ -119,7 +119,11 @@ COARSE = [
         "history rewrite (filter-branch/filter-repo)",
         True,
     ),
-    (re.compile(r"\bcore\.hooksPath\b", re.I), "hook bypass (core.hooksPath)", True),
+    (
+        re.compile(r"core\.hooksPath\s*=|config\b(?:\s+--?\w+)*\s+core\.hooksPath\s+\S", re.I),
+        "hook bypass (core.hooksPath)",
+        True,
+    ),
 ]
 
 
@@ -391,12 +395,14 @@ def _branch(a):
 
 
 def _config(a):
+    reading = has_flag(a, "--list", "-l", "--get", "--get-all", "--get-regexp") or any(
+        x.startswith("--get") for x in a
+    )
+    if reading:
+        return None
     if any(_bad_config_key(k) for k in positionals(a)):
         return "config alias.* / core.hooksPath re-routes git commands or disables hooks"
-    if has_flag(a, "--global", "--system") and not (
-        has_flag(a, "--list", "-l", "--get", "--get-all", "--get-regexp")
-        or any(x.startswith("--get") for x in a)
-    ):
+    if has_flag(a, "--global", "--system"):
         return "global/system git config is the human's identity"
     return None
 
