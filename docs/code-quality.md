@@ -163,6 +163,8 @@ The git and tamper guards inspect shell *strings*. Against an agent that is acti
 - **Files:** Claude Code's `permissions.deny` `Edit(...)` rules (harness-enforced) and, where it matters, a filesystem sandbox / read-only mounts for `.claude/`, `.wards/`, `.git/hooks/`.
 - **Visibility:** everything the wards decide is in `~/.wards/audit.log`; a config change mid-session is announced. Tampering that slips past becomes visible, not silent.
 
+Worked example: [the operator asks the agent to route around the tamper ward](case-studies/2026-09-30-settings-indirect-write.md) — the hook blocked the direct edit, the agent's instructions stopped the indirect one, and it surfaced that `extra_paths` is anchored to the edited file's repo.
+
 The code-shape, lint, tests and types wards are different in kind: they judge the *result on disk* at Stop, so evading the per-edit check only defers the block.
 
 ## Why PostToolUse and not PreToolUse?

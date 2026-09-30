@@ -56,7 +56,8 @@ wards/
 ├── docs/
 │   ├── layers.md        # the full explainer, layer by layer
 │   ├── code-quality.md  # the five code-quality hooks: policy, ratchet, config
-│   └── ci.md            # CI backstop recipes (lizard, jscpd, diff-cover, ADO sketch)
+│   ├── ci.md            # CI backstop recipes (lizard, jscpd, diff-cover, ADO sketch)
+│   └── case-studies/    # real incidents: what each ward caught, and what it didn't
 ├── tests/               # bash simulation harness for every hook (tests/run.sh)
 └── .wards/config.toml   # this repo's own ward config (dogfood)
 ```
