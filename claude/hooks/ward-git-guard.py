@@ -21,6 +21,14 @@ Blocked (human runs these):
   config / identity    config --global|--system WRITES (reads pass), remote remove/rm/
                        set-url/rename
 
+Gated (the human's call: Claude Code's `ask` permission prompt, never a PIN):
+  protected push       push writing to [git] protected_branches (default main/master),
+                       incl. `push` on a protected branch and aliases like `git pushall`
+  PR merge             gh pr merge, glab mr merge, az repos pr update --status completed /
+                       --auto-complete, REST pullrequests/<id> completion (also from the
+                       Chrome javascript_tool)
+  Modes: protected_push / pr_merge = "ask" (default) | "block" | "allow".
+
 Commit messages: Conventional Commits on the first line — `type(scope)?: subject`,
 subject <= 72. Handles -m, -am"…", --message=, `-m "$(cat <<'EOF' … EOF)"`,
 `-F - <<'EOF'`, and `echo … | git commit -F -`. Messages that cannot be known
@@ -44,19 +52,34 @@ Config (.wards/config.toml):
   conventional_commits = true
   types = ["feat","fix","docs","style","refactor","perf","test","build","ci","chore","revert"]
   subject_max = 72
+  protected_branches = ["main", "master"]
+  protected_push = "ask"
+  pr_merge = "ask"
 """
 
 import os
 import re
 import shlex
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from wardlib import as_list, audit, block, config, read_payload
+from wardlib import as_list, ask_human, audit, block, config, read_payload
 
 HOOK = "git"
 DEFAULT_TYPES = ["feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore", "revert"]
-SET = {"enabled": True, "conventional": True, "types": DEFAULT_TYPES, "subject_max": 72, "cc_re": None}
+SET = {
+    "enabled": True,
+    "conventional": True,
+    "types": DEFAULT_TYPES,
+    "subject_max": 72,
+    "cc_re": None,
+    "protected": ["main", "master"],
+    "protected_push": "ask",
+    "pr_merge": "ask",
+    "cwd": None,
+}
+GATE_MODES = ("ask", "block", "allow")
 
 MUTATING = {
     "commit",
@@ -133,6 +156,9 @@ def configure(anchor_path):
     SET["conventional"] = cfg.get("conventional_commits", True)
     SET["types"] = as_list(cfg.get("types", DEFAULT_TYPES)) or DEFAULT_TYPES
     SET["subject_max"] = int(cfg.get("subject_max", 72))
+    SET["protected"] = as_list(cfg.get("protected_branches", ["main", "master"]))
+    SET["protected_push"] = _mode(cfg.get("protected_push", "ask"))
+    SET["pr_merge"] = _mode(cfg.get("pr_merge", "ask"))
     SET["cc_re"] = re.compile(
         rf"^({'|'.join(map(re.escape, SET['types']))})(\([^)]+\))?!?: (?P<subject>\S.*)$"
     )
@@ -544,6 +570,120 @@ def commit_message_problem(args, command, seg_text):
     return None
 
 
+# -------------------------------------------------------------------- gates --
+# The "your call" tier: not forbidden, but not the agent's decision either. Each
+# gate returns a reason; main() turns it into a human prompt (ask), a block, or
+# nothing, per the [git] protected_push / pr_merge modes.
+
+
+def _mode(value):
+    value = str(value).lower()
+    return value if value in GATE_MODES else "ask"
+
+
+def _git_out(cwd, *args):
+    try:
+        res = subprocess.run(["git", *args], cwd=cwd or None, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def _seg_cwd(seg_text):
+    """Directory a git invocation runs in: the payload cwd, or its `-C dir`."""
+    try:
+        toks = shlex.split(seg_text)
+    except ValueError:
+        return SET["cwd"]
+    for i, t in enumerate(toks[:-1]):
+        if t == "-C":
+            return os.path.join(SET["cwd"] or os.getcwd(), os.path.expanduser(toks[i + 1]))
+    return SET["cwd"]
+
+
+def _push_targets(args, cwd):
+    """Branch names a `git push` writes to (best effort, never raises)."""
+    if has_flag(args, "--dry-run") or has_short(args, "n"):
+        return []
+    if has_flag(args, "--all", "--branches"):
+        return ["(every branch)"]
+    refspecs = positionals(args)[1:]
+    if not refspecs:
+        return [_git_out(cwd, "rev-parse", "--abbrev-ref", "HEAD")]
+    out = []
+    for spec in refspecs:
+        dst = spec.lstrip("+").split(":", 1)[-1]
+        if dst == "HEAD":
+            dst = _git_out(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+        out.append(dst.removeprefix("refs/heads/"))
+    return out
+
+
+def _alias_push(sub, args, cwd):
+    """`git pushall` and friends: resolve a repo/global alias; return the push
+    invocations it expands to as (args, cwd) pairs."""
+    if sub in MUTATING or not re.fullmatch(r"[\w.-]+", sub):
+        return []
+    body = _git_out(cwd, "config", "--get", f"alias.{sub}")
+    if "push" not in body:
+        return []
+    if body.startswith("!"):
+        return [(a, cwd) for s, a, _t in git_invocations(normalise(body[1:])) if s == "push"]
+    toks = shlex.split(body)
+    return [(toks[1:] + args, cwd)] if toks and toks[0] == "push" else []
+
+
+def push_gate(sub, args, seg_text):
+    """Reason to involve the human if this invocation pushes to a protected branch."""
+    cwd = _seg_cwd(seg_text)
+    pushes = [(args, cwd)] if sub == "push" else _alias_push(sub, args, cwd)
+    hits = sorted(
+        {t for a, c in pushes for t in _push_targets(a, c) if t in SET["protected"] or t.startswith("(")}
+    )
+    if not hits:
+        return None
+    via = "" if sub == "push" else f" (via alias `git {sub}`)"
+    return f"push to protected branch {', '.join(hits)}{via}"
+
+
+PR_MERGE = [
+    (re.compile(r"\bgh\s+pr\s+merge\b"), "GitHub pull request merge (gh pr merge)"),
+    (re.compile(r"\bglab\s+mr\s+merge\b"), "GitLab merge request merge (glab mr merge)"),
+    (
+        re.compile(
+            r"\baz\s+repos\s+pr\s+(update|create)\b[^;&|\n]*(--status\s+completed|--auto-complete\s+(true|yes|1))"
+        ),
+        "Azure DevOps pull request completion (az repos pr)",
+    ),
+    (
+        re.compile(
+            r"pullrequests?/\d+[^;&|\n]*(completed|/merge\b)|(completed|/merge\b)[^;&|\n]*pullrequests?/\d+",
+            re.I,
+        ),
+        "pull request completion through the REST API",
+    ),
+]
+
+
+def pr_merge_gate(text):
+    return next((reason for rx, reason in PR_MERGE if rx.search(text)), None)
+
+
+def gate(kind, reasons, command):
+    """Apply the configured mode for a gate kind to its collected reasons."""
+    mode = SET[kind]
+    if not reasons or mode == "allow":
+        return
+    summary = "; ".join(dict.fromkeys(reasons))
+    if mode == "block":
+        deny(summary, command)
+    audit(f"ASKED: {HOOK}", f"{summary}\t{command}")
+    ask_human(
+        f"WARD GATE (git): {summary}. This is the human's call, not the agent's. "
+        f"Approve only if you asked for exactly this.\n\n{command}"
+    )
+
+
 # --------------------------------------------------------------------- main --
 
 
@@ -573,24 +713,41 @@ def coarse_net(norm, command):
             )
 
 
+BROWSER_JS = "mcp__claude-in-chrome__javascript_tool"
+
+
+def check_bash(command):
+    norm = normalise(command)
+    pushes = []
+    if "git" in norm:
+        for sub, args, seg_text in git_invocations(norm):
+            reason = rule_for(sub, args)
+            if not reason and sub == "commit" and SET["conventional"]:
+                reason = commit_message_problem(args, command, seg_text)
+            if reason:
+                deny(reason, command)
+            pushes.append(push_gate(sub, args, seg_text))
+            if sub in MUTATING:
+                audit(f"ALLOWED: {HOOK}", command)
+        coarse_net(norm, command)
+    gate("protected_push", [p for p in pushes if p], command)
+    gate("pr_merge", [r for r in [pr_merge_gate(norm)] if r], command)
+
+
 def main():
     payload = read_payload()
-    configure(payload.get("cwd") or os.getcwd())
-    if not SET["enabled"] or payload.get("tool_name") != "Bash":
+    SET["cwd"] = payload.get("cwd") or os.getcwd()
+    configure(SET["cwd"])
+    tool, tool_input = payload.get("tool_name"), payload.get("tool_input", {})
+    if not SET["enabled"]:
         return
-    command = payload.get("tool_input", {}).get("command", "")
-    norm = normalise(command)
-    if "git" not in norm:
-        return
-    for sub, args, seg_text in git_invocations(norm):
-        reason = rule_for(sub, args)
-        if not reason and sub == "commit" and SET["conventional"]:
-            reason = commit_message_problem(args, command, seg_text)
-        if reason:
-            deny(reason, command)
-        if sub in MUTATING:
-            audit(f"ALLOWED: {HOOK}", command)
-    coarse_net(norm, command)
+    if tool == "Bash":
+        check_bash(tool_input.get("command", ""))
+    elif tool == BROWSER_JS:
+        # A signed-in browser can merge a PR through the REST API (fetch with the
+        # session cookie): same gate as the CLI.
+        text = tool_input.get("text", "")
+        gate("pr_merge", [r for r in [pr_merge_gate(text)] if r], f"[browser javascript] {text[:600]}")
 
 
 if __name__ == "__main__":

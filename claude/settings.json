@@ -97,6 +97,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "mcp__claude-in-chrome__javascript_tool",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ward-git-guard.py",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "PostToolUse": [

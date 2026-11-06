@@ -10,7 +10,7 @@ Same principle as the rest of wards: **the harness enforces cheaply and produces
 |---|---|---|---|
 | `ward-complexity.py` | Pre/Post `Edit\|Write`, Stop | code shape: cyclomatic complexity, function length, parameter count, file length (via `lizard`, ~20 languages) | new or worsened function past the "high" band; growth of any legacy high-risk function |
 | `ward-lint.py` | Pre/Post `Edit\|Write`, Stop | the project's **own** linter + formatter (ruff, eslint/prettier, shellcheck/shfmt, gofmt/go vet, tflint/terraform fmt); suppression comments | new lint findings (error severity); any increase in `noqa` / `type: ignore` / `eslint-disable` / `nolint` … |
-| `ward-git-guard.py` | Pre `Bash` | git hygiene | `--no-verify`, force-push, `reset --hard`, `clean -f`, whole-tree discards, `branch -D`, `stash drop`, history rewrites, global config, remote removal; non-Conventional-Commits messages |
+| `ward-git-guard.py` | Pre `Bash`, Pre `mcp__claude-in-chrome__javascript_tool` | git hygiene; human gate | **asks** (permission prompt) before a push to a protected branch or a PR merge; **blocks** `--no-verify`, force-push, `reset --hard`, `clean -f`, whole-tree discards, `branch -D`, `stash drop`, history rewrites, global config, remote removal; non-Conventional-Commits messages |
 | `ward-tests.py` | Pre `Edit\|Write`, Stop | tests ran and passed before "done"; tests not deleted or skipped | test command exit ≠ 0; fewer test functions or more skip markers than at first touch |
 | `ward-typecheck.py` | Pre `Edit\|Write`, Stop | type checker (tsc / pyright / mypy / go vet) | any type error not present at the session's first source-file touch |
 | `ward-tamper-guard.py` | Pre `Edit\|Write\|MultiEdit\|NotebookEdit`, Pre `Bash` | the wards themselves stay human-owned | Edit/Write of `.claude/settings*.json`, `.claude/hooks/*`, `.wards/*`, `~/.claude/settings.json`, `.git/hooks/`, `.git/config`, `.pre-commit-config.yaml`; any Bash segment naming those paths (or `rm -rf .git`) unless it is a known **read-only** command with no file redirection (allow-list: cat/ls/grep/diff/jq/git diff|log|show/…; `find` without `-delete`/`-exec`, `sed`/`awk` without in-place); `pre-commit uninstall`, `core.hooksPath`. Quote-splitting (`.wa""rds`) normalised; heredoc bodies ignored. `.wards/config.toml` is fingerprinted at first sight and any mid-session change is audited and announced to the agent. Layer 4 belt-and-braces: `permissions.deny` `Edit(./.claude/**)`, `Edit(./.wards/**)` (Claude Code's `Edit(...)` path rules cover Write/NotebookEdit too). |
@@ -84,7 +84,14 @@ Sibling of `ward-az-guard.sh`. Two nets. **Structured:** every `git …` invocat
 - **identity / config** — `config --global|--system` *writes* (`--list`/`--get` pass), `remote remove|rm|set-url|rename`
 - **commit messages** — first line must be Conventional Commits `type(scope)?: subject`, subject ≤ 72 chars (`[git] conventional_commits = false` to disable; `types = [...]` to customize). Parsed from `-m "…"`, `-am"…"`, `--message=`, `-m "$(cat <<'EOF' … EOF)"` (Claude Code's own style; the heredoc nearest the commit), `-F - <<'EOF'`, and `echo "…" | git commit -F -`. Messages that cannot be known statically (`-F file`, editor, `$MSG`, `$(some-command)`) and git's own shapes (`Merge …`, `Revert "…"`, `fixup!`, `squash!`, `Initial commit`) pass.
 
-Reads and ordinary work (`status`, `log`, `add`, `commit -m 'feat: …'`, `push`, `rebase main`, `stash`/`pop`, `branch -d`, `restore --staged`, `checkout -- file.py`, `commit --amend`, `remote add`, `worktree add/remove`) pass. Mutating commands — allowed or blocked — are audit-logged; reads are not.
+**Gated (the human's call, not the agent's).** Some actions are not forbidden but must not be the agent's decision. For these the guard returns Claude Code's `ask` permission decision instead of a block: the session stops and Claude Code shows its own approval prompt (in the terminal, and through Remote Control on the phone), which only the human can answer. The agent cannot click Yes, so no PIN or secret is needed; the click is the proof. Every prompt is audit-logged as `ASKED: git`.
+
+- **protected-branch push** — any push that writes to a branch in `protected_branches` (default `main`, `master`): explicit refspecs (`origin main`, `feat:main`, `HEAD:refs/heads/main`), `push` / `push origin HEAD` while on a protected branch, `--all`, and aliases that expand to such a push (`git pushall` with `!git push origin && git push github`). Dry runs (`-n`) pass.
+- **PR merge** — `gh pr merge`, `glab mr merge`, `az repos pr update --status completed`, `--auto-complete true`, and a REST call that completes a pull request (`…/pullrequests/<id>` with `completed` or `/merge`), including `fetch` from a signed-in browser through the Claude in Chrome `javascript_tool` (hook matcher `mcp__claude-in-chrome__javascript_tool`). Opening or viewing a PR passes.
+
+The never-tier wins: `git push --force origin main` is blocked, not asked. Modes per gate in `[git]`: `protected_push` / `pr_merge` = `"ask"` (default), `"block"` (human runs it) or `"allow"`.
+
+Reads and ordinary work (`status`, `log`, `add`, `commit -m 'feat: …'`, `push` to a feature branch, `rebase main`, `stash`/`pop`, `branch -d`, `restore --staged`, `checkout -- file.py`, `commit --amend`, `remote add`, `worktree add/remove`) pass. Mutating commands — allowed or blocked — are audit-logged; reads are not.
 
 ## Tests (`ward-tests.py`)
 
@@ -123,6 +130,9 @@ enabled = true
 conventional_commits = true
 types = ["feat","fix","docs","style","refactor","perf","test","build","ci","chore","revert"]
 subject_max = 72
+protected_branches = ["main", "master"]
+protected_push = "ask"       # ask | block | allow
+pr_merge = "ask"             # ask | block | allow
 
 [tests]
 command = "pytest -q"        # overrides auto-detect; "" disables the run
@@ -161,6 +171,7 @@ The git and tamper guards inspect shell *strings*. Against an agent that is acti
 
 - **Repo:** server-side branch protection (no force-push, required PR checks, required reviews) and CI running the same checks (see [`ci.md`](ci.md)). A `.wards/` or `.claude/` change shows up in the PR diff.
 - **Files:** Claude Code's `permissions.deny` `Edit(...)` rules (harness-enforced) and, where it matters, a filesystem sandbox / read-only mounts for `.claude/`, `.wards/`, `.git/hooks/`.
+- **Gates:** the `ask` prompt is Claude Code's, so it is only as strong as the session's permission mode: verify it still appears in auto mode and over Remote Control before relying on it. Browser *clicks* (the Chrome `computer` tool) carry no command text and cannot be gated; only `javascript_tool` calls are inspected. Pushes run with the operator's own git credentials, so the server cannot tell agent from human: give the agent its own identity that can open PRs but not approve them, and require a reviewer on `main`.
 - **Visibility:** everything the wards decide is in `~/.wards/audit.log`; a config change mid-session is announced. Tampering that slips past becomes visible, not silent.
 
 Worked example: [the operator asks the agent to route around the tamper ward](case-studies/2026-09-30-settings-indirect-write.md) — the hook blocked the direct edit, the agent's instructions stopped the indirect one, and it surfaced that `extra_paths` is anchored to the edited file's repo.

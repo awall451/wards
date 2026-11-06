@@ -211,6 +211,26 @@ def block(text):
     sys.exit(2)
 
 
+def ask_human(text):
+    """Exit 0 with a PreToolUse `ask` decision: Claude Code stops and shows its own
+    permission prompt (terminal, and Remote Control on the phone). Only the human
+    can answer it; the agent cannot click Yes. Used for the "your call" tier:
+    actions a human may allow case by case, as opposed to block() for never."""
+    print(
+        json.dumps(
+            {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": text.rstrip("\n"),
+                }
+            },
+            ensure_ascii=False,
+        )
+    )
+    sys.exit(0)
+
+
 def warn_context(event, header, lines):
     """Non-blocking: inject context into the agent's turn (PreToolUse / PostToolUse;
     Stop has no context channel, so callers audit instead)."""

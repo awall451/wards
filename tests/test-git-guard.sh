@@ -3,7 +3,9 @@
 # shellcheck source=tests/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 H=ward-git-guard.py
-ok()  { local l="${1//$'\n'/ }"; expect "allow: ${l:0:70}" 0 $H "$(bash_ev "$1" s1)"; }
+ok()  { local l="${1//$'\n'/ }"; expect "allow: ${l:0:70}" 0 $H "$(bash_ev "$1" s1)"; not_asked "  (no prompt)"; }
+ask() { local l="${1//$'\n'/ }"; expect "ask: ${l:0:70}" 0 $H "$(bash_ev "$1" s1)"; expect_out "  (prompts the human)" '"permissionDecision": "ask"'; }
+not_asked() { if grep -q '"permissionDecision": "ask"' <<<"$LAST_OUT"; then FAIL=$((FAIL+1)); printf '  FAIL %s\n%s\n' "$1" "$LAST_OUT"; else PASS=$((PASS+1)); fi; }
 no()  { local l="${1//$'\n'/ }"; expect "block: ${l:0:70}" 2 $H "$(bash_ev "$1" s1)"; }
 
 echo "# reads and ordinary work pass"
@@ -13,7 +15,7 @@ ok "git add -A && git commit -m 'feat(hooks): add git guard'"
 ok "git commit -m \"fix: handle empty payload\" -m \"body text\""
 ok "git commit -am 'chore: tidy'"
 ok "git commit -m 'refactor!: drop legacy api'"
-ok "git push origin main"
+ok "git push origin feature/x"
 ok "git push -n origin main"                       # dry-run, not no-verify
 ok "git reset --soft HEAD~1"
 ok "git reset HEAD file.txt"
@@ -115,7 +117,7 @@ expect "unevaluable \$(…) -> allowed"     0 $H "$(bash_ev 'git commit -m "$(py
 expect "message containing & not split"   0 $H "$(bash_ev "git commit -m 'feat: a & b | c; d'" s1)"
 expect "message with & then force push"   2 $H "$(bash_ev "git commit -m 'feat: a & b' && git push --force" s1)"
 expect "push +refspec force -> block"     2 $H "$(bash_ev "git push origin +main" s1)"
-expect "push refspec no plus -> ok"       0 $H "$(bash_ev "git push origin main:main" s1)"
+expect "push refspec no plus -> ok"       0 $H "$(bash_ev "git push origin feat:feat" s1)"
 expect "quoted git in grep not parsed"    0 $H "$(bash_ev "grep -rn 'git push --force' docs/" s1)"
 expect "git in path (/usr/bin/git)"       2 $H "$(bash_ev "/usr/bin/git reset --hard" s1)"
 expect "-C and -c global opts"            2 $H "$(bash_ev "git -C /repo -c user.name=x push -f" s1)"
@@ -214,7 +216,45 @@ ok "echo 'git reset --hard is bad'"
 ok "git log --grep='reset --hard'"
 ok "git commit -m 'feat: msg' 2>&1 | tail -1"
 ok $'cat > notes.md <<\'EOF\'\nnotes\nEOF\ngit commit -m "$(cat <<\'EOF\'\ndocs: add notes\nEOF\n)"'   # nearest heredoc is the message
+echo "# gates: protected-branch push and PR merge ask the human (exit 0 + ask decision)"
+git init -q -b main . && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m "chore: init"
+git config alias.pushall '!git push origin && git push github'
+git config alias.pm 'push origin main'
+ask "git push origin main"
+ask "git push origin HEAD:refs/heads/main"
+ask "git push origin feat:main"
+ask "git push"                                       # current branch is main
+ask "git push origin HEAD"
+ask "git push --all origin"
+ask "git pushall"                                    # alias expanding to pushes of main
+ask "git pm"
+ask "git add -A && git commit -m 'feat: x' && git push origin main"
+ask "gh pr merge 12 --squash"
+ask "az repos pr update --id 5 --status completed"
+ask "az repos pr create --source-branch x --auto-complete true"
+ask "curl -X PATCH https://dev.azure.com/o/p/_apis/git/repositories/r/pullrequests/5 -d '{\"status\":\"completed\"}'"
+ok "git push -n origin main"                         # dry run
+ok "gh pr create --fill"
+ok "az repos pr create --source-branch x --target-branch main"
+ok "gh pr view 12"
+no "git push --force origin main"                    # never-tier wins over the gate
+git switch -q -c feat/y
+ok "git push"                                        # current branch is not protected
+ok "git push -u origin feat/y"
+ok "git pushall"                                     # alias pushes feat/y
+expect "browser js: PR completion asks" 0 $H "$(jq -cn --arg t "await fetch('/o/p/_apis/git/repositories/q/pullrequests/5?api-version=7.1',{method:'PATCH',body:JSON.stringify({status:'completed'})})" '{hook_event_name:"PreToolUse",tool_name:"mcp__claude-in-chrome__javascript_tool",session_id:"s1",tool_input:{action:"javascript_exec",text:$t}}')"
+expect_out "  (prompts the human)" '"permissionDecision": "ask"'
+expect "browser js: PR creation passes" 0 $H "$(jq -cn --arg t "await fetch('/o/p/_apis/git/repositories/q/pullrequests?api-version=7.1',{method:'POST'})" '{hook_event_name:"PreToolUse",tool_name:"mcp__claude-in-chrome__javascript_tool",session_id:"s1",tool_input:{action:"javascript_exec",text:$t}}')"
+not_asked "  (no prompt)"
+mkdir -p .wards && printf '[git]\nprotected_push = "block"\nprotected_branches = ["release"]\n' > .wards/config.toml
+no "git push origin release"
+ok "git push origin main"                            # main not protected in this config
+printf '[git]\nprotected_push = "allow"\npr_merge = "allow"\n' > .wards/config.toml
+ok "git push origin main"
+ok "gh pr merge 12"
+rm -rf .wards
 echo "# audit"
+check "audit has ASKED" grep -q "ASKED: git" "$WARDS_AUDIT_LOG"
 check "audit has BLOCKED" grep -q "BLOCKED: git" "$WARDS_AUDIT_LOG"
 check "audit has ALLOWED" grep -q "ALLOWED: git" "$WARDS_AUDIT_LOG"
 check_not() { local label="$1"; shift; if "$@" >/dev/null 2>&1; then FAIL=$((FAIL+1)); printf '  FAIL %s\n' "$label"; else PASS=$((PASS+1)); printf '  ok   %s\n' "$label"; fi; }

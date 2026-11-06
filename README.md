@@ -42,7 +42,7 @@ wards/
 ├── claude/
 │   ├── settings.json              # harness permissions + hook wiring (layer 4)
 │   ├── hooks/ward-az-guard.sh     # cloud-command inspector + audit logger (layer 5)
-│   ├── hooks/ward-git-guard.py    # git hygiene: no bypass / rewrite / destroy; Conventional Commits
+│   ├── hooks/ward-git-guard.py    # git hygiene: no bypass / rewrite / destroy; Conventional Commits; human gate on main + PR merge
 │   ├── hooks/ward-complexity.py   # code shape ratchet: CCN, fn length, params, file length (lizard)
 │   ├── hooks/ward-lint.py         # project's own linter+formatter on every edit; blocks new suppressions
 │   ├── hooks/ward-tests.py        # Stop gate: tests ran green; no test deleted or skipped
